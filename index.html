@@ -1,291 +1,235 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>エネルギー変換のしくみ（3D） - 電磁誘導</title>
-    <style>
-        body { margin: 0; overflow: hidden; font-family: sans-serif; background-color: #f0f4f8; }
-        
-        #controls { position: absolute; bottom: 30px; right: 30px; display: flex; gap: 15px; z-index: 10; }
-        
-        button {
-            padding: 15px 25px; font-size: 1.1rem; font-weight: bold; border: none; border-radius: 8px;
-            cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: 0.2s;
-        }
-        #startBtn { background-color: #27ae60; color: white; }
-        #startBtn:active { background-color: #2ecc71; transform: translateY(2px); }
-        #stopBtn { background-color: #e74c3c; color: white; }
-        #stopBtn:active { background-color: #c0392b; transform: translateY(2px); }
-        #coverBtn { background-color: #34495e; color: white; }
-        #coverBtn:active { background-color: #2c3e50; transform: translateY(2px); }
-    </style>
-</head>
-<body>
-
-    <div id="controls">
-        <button id="coverBtn">📦 カバーを外す</button>
-        <button id="startBtn">▶ スタート</button>
-        <button id="stopBtn">■ ストップ</button>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
-    <script>
-        let isPlaying = false;
-        let ledIntensity = 0;
-        let isCoverVisible = true;
-
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xf0f4f8);
-
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(12, 8, 15);
-
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.target.set(0, 4, 0);
-        controls.update();
-
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-        scene.add(ambientLight);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-        directionalLight.position.set(10, 20, 10);
-        scene.add(directionalLight);
-
-        // --- 土台と支柱 ---
-        // 支柱（stand）の奥行きは0.4（z=-0.2 から z=0.2 の間）です。
-        const woodMaterial = new THREE.MeshLambertMaterial({ color: 0xdeb887 });
-        const base = new THREE.Mesh(new THREE.BoxGeometry(8, 0.4, 6), woodMaterial);
-        scene.add(base);
-        const stand = new THREE.Mesh(new THREE.BoxGeometry(1.5, 9, 0.4), woodMaterial);
-        stand.position.set(0, 4.5, 0);
-        scene.add(stand);
-
-        const rotorGroup = new THREE.Group();
-        rotorGroup.position.set(0, 8, 0.8);
-        scene.add(rotorGroup);
-
-        const greenMat = new THREE.MeshLambertMaterial({ color: 0x8cc63f, side: THREE.DoubleSide });
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), greenMat);
-        cap.scale.z = 0.6;
-        rotorGroup.add(cap);
-
-        const bladeGeo = new THREE.PlaneGeometry(1.2, 2.2, 10, 10);
-        const positions = bladeGeo.attributes.position.array;
-        for (let j = 0; j < positions.length; j += 3) {
-            let x = positions[j];
-            let y = positions[j+1];
-            let widthScale = 0.3 + ((y + 1.1) / 2.2) * 0.7; 
-            positions[j] = x * widthScale;
-            positions[j+2] = Math.sin((x / 1.2) * Math.PI) * 0.3 + (y / 2.2) * 0.4;
-        }
-        bladeGeo.computeVertexNormals();
-
-        for (let i = 0; i < 4; i++) {
-            const blade = new THREE.Mesh(bladeGeo, greenMat);
-            const angle = (i * Math.PI) / 2;
-            blade.position.x = Math.cos(angle) * 1.3;
-            blade.position.y = Math.sin(angle) * 1.3;
-            blade.rotation.z = angle - Math.PI / 2;
-            blade.rotation.x = -0.3;
-            rotorGroup.add(blade);
-        }
-
-        const metalMat = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
-        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 3.6, 16), metalMat);
-        shaft.rotation.x = Math.PI / 2;
-        shaft.position.z = -1.8;
-        rotorGroup.add(shaft);
-
-        const magnetMaterials = [
-            new THREE.MeshLambertMaterial({ color: 0x333333 }), new THREE.MeshLambertMaterial({ color: 0x333333 }),
-            new THREE.MeshLambertMaterial({ color: 0xe74c3c }), new THREE.MeshLambertMaterial({ color: 0x3498db }),
-            new THREE.MeshLambertMaterial({ color: 0x333333 }), new THREE.MeshLambertMaterial({ color: 0x333333 })
-        ];
-        const magnet = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.6, 0.8), magnetMaterials);
-        magnet.position.z = -3.4;
-        rotorGroup.add(magnet);
-
-        const coil = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 1.2), new THREE.MeshBasicMaterial({ color: 0xc47b4d, wireframe: true }));
-        coil.position.set(0, 8, -2.6);
-        scene.add(coil);
-
-        const coverGeo = new THREE.BoxGeometry(2.2, 2.2, 2.5);
-        const coverMat = new THREE.MeshLambertMaterial({ color: 0x222222 }); 
-        const motorCover = new THREE.Mesh(coverGeo, coverMat);
-        motorCover.position.set(0, 8, -2.5);
-        scene.add(motorCover);
-
-        const inductionWaves = [];
-        const waveGeo = new THREE.TorusGeometry(1, 0.05, 16, 100);
-        const waveMat = new THREE.MeshBasicMaterial({ color: 0x3498db, transparent: true, opacity: 0 }); 
-        
-        for (let i = 0; i < 3; i++) {
-            const wave = new THREE.Mesh(waveGeo, waveMat.clone()); 
-            wave.position.set(0, 8, -2.6); 
-            wave.rotation.x = Math.PI / 2; 
-            wave.userData.progress = i / 3; 
-            scene.add(wave);
-            inductionWaves.push(wave);
-        }
-
-        // --- LEDグループとアノード・カソードの作成 ---
-        const ledGroup = new THREE.Group();
-        // 【修正】LED全体を板に近づけました。(Z=0.5)
-        // 支柱の表面が Z=0.2 なので、足の長さ(0.3)を足すとちょうど板にくっつきます。
-        ledGroup.position.set(0, 1.5, 0.5); 
-        ledGroup.rotation.x = Math.PI / 2;
-        scene.add(ledGroup);
-        
-        const ledMat = new THREE.MeshLambertMaterial({ 
-            color: 0x222222, transparent: true, opacity: 0.9, emissive: 0xffffff, emissiveIntensity: 0 
-        });
-        
-        const ledBody = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.5, 16), ledMat);
-        ledBody.position.y = 0.25;
-        ledGroup.add(ledBody);
-        
-        const ledHead = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), ledMat);
-        ledHead.position.y = 0.5;
-        ledGroup.add(ledHead);
-
-        // --- 足（ピン）の作成 ---
-        const pinMat = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
-        const pinGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.3, 8); // 長さを0.3に設定
-        
-        // ① アノード（プラス極：右側の足）
-        const anode = new THREE.Mesh(pinGeo, pinMat);
-        anode.position.set(0.1, -0.15, 0); // Z=0.5から-0.15戻るので、先端はZ=0.2(板の表面)になります
-        ledGroup.add(anode);
-        // アノードの目印（赤いリング）を追加して生徒にわかりやすく
-        const anodeMarker = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.015, 8, 16), new THREE.MeshBasicMaterial({ color: 0xe74c3c }));
-        anodeMarker.position.set(0.1, -0.05, 0);
-        anodeMarker.rotation.x = Math.PI / 2;
-        ledGroup.add(anodeMarker);
-
-        // ② カソード（マイナス極：左側の足）
-        const cathode = new THREE.Mesh(pinGeo, pinMat);
-        cathode.position.set(-0.1, -0.15, 0);
-        ledGroup.add(cathode);
-        // カソードの目印（黒いリング）を追加
-        const cathodeMarker = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.015, 8, 16), new THREE.MeshBasicMaterial({ color: 0x333333 }));
-        cathodeMarker.position.set(-0.1, -0.05, 0);
-        cathodeMarker.rotation.x = Math.PI / 2;
-        ledGroup.add(cathodeMarker);
-
-        const pointLight = new THREE.PointLight(0xffffff, 0, 10);
-        pointLight.position.y = 0.5;
-        ledGroup.add(pointLight);
-
-
-        // --- 導線の接続位置の精密な調整 ---
-        // 足のちょうど真ん中（Z=0.35）の座標に配線を繋ぎます
-        
-        // 赤線（モーター ➔ アノードへ接続）
-        const redCurve = new THREE.QuadraticBezierCurve3(
-            new THREE.Vector3(0.5, 7.5, -2.6), 
-            new THREE.Vector3(2.5, 4, 0.5),    
-            new THREE.Vector3(0.1, 1.5, 0.35)  // 終点：アノードのピン座標
-        );
-        scene.add(new THREE.Mesh(new THREE.TubeGeometry(redCurve, 20, 0.05, 8, false), new THREE.MeshLambertMaterial({ color: 0xe74c3c })));
-
-        // 黒線（カソード ➔ モーターへ接続）
-        const blackCurve = new THREE.QuadraticBezierCurve3(
-            new THREE.Vector3(-0.1, 1.5, 0.35), // 始点：カソードのピン座標
-            new THREE.Vector3(-2.5, 4, 0.5),   
-            new THREE.Vector3(-0.5, 7.5, -2.6)
-        );
-        scene.add(new THREE.Mesh(new THREE.TubeGeometry(blackCurve, 20, 0.05, 8, false), new THREE.MeshLambertMaterial({ color: 0x333333 })));
-
-        const redParticles = [];
-        const blackParticles = [];
-        const particleMat = new THREE.MeshBasicMaterial({ color: 0xf1c40f });
-
-        for (let i = 0; i < 5; i++) {
-            const pRed = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), particleMat);
-            pRed.userData.progress = i / 5; scene.add(pRed); redParticles.push(pRed);
-
-            const pBlack = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), particleMat);
-            pBlack.userData.progress = i / 5; scene.add(pBlack); blackParticles.push(pBlack);
-        }
-
-        document.getElementById('startBtn').addEventListener('click', () => { isPlaying = true; });
-        document.getElementById('stopBtn').addEventListener('click', () => { isPlaying = false; });
-        
-        const coverBtn = document.getElementById('coverBtn');
-        coverBtn.addEventListener('click', () => {
-            isCoverVisible = !isCoverVisible; 
-            motorCover.visible = isCoverVisible; 
-            if (isCoverVisible) { coverBtn.innerText = "📦 カバーを外す"; } 
-            else { coverBtn.innerText = "📦 カバーをつける"; }
-        });
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (isPlaying) {
-                rotorGroup.rotation.z -= 0.15;
-
-                if (!isCoverVisible) {
-                    inductionWaves.forEach(wave => {
-                        wave.visible = true;
-                        wave.userData.progress += 0.02; 
-                        if (wave.userData.progress >= 1.0) wave.userData.progress = 0; 
-                        const scale = 1.0 + wave.userData.progress * 1.5;
-                        wave.scale.set(scale, scale, scale);
-                        wave.material.opacity = 1.0 - wave.userData.progress;
-                    });
-                } else {
-                    inductionWaves.forEach(wave => wave.visible = false);
-                }
-
-                redParticles.forEach(p => {
-                    p.userData.progress += 0.015;
-                    if (p.userData.progress >= 1.0) {
-                        p.userData.progress = 0;
-                        ledIntensity = 1.0; 
-                    }
-                    p.position.copy(redCurve.getPoint(p.userData.progress));
-                    p.visible = true;
-                });
-
-                blackParticles.forEach(p => {
-                    p.userData.progress += 0.015;
-                    if (p.userData.progress >= 1.0) p.userData.progress = 0;
-                    p.position.copy(blackCurve.getPoint(p.userData.progress));
-                    p.visible = true;
-                });
-            } else {
-                redParticles.forEach(p => p.visible = false);
-                blackParticles.forEach(p => p.visible = false);
-                inductionWaves.forEach(wave => wave.visible = false);
-            }
-
-            if (ledIntensity > 0) {
-                ledIntensity -= 0.05;
-                if (ledIntensity < 0) ledIntensity = 0;
-            }
-            if (!isPlaying) ledIntensity = 0;
-
-            ledMat.emissiveIntensity = ledIntensity;
-            pointLight.intensity = ledIntensity * 1.5;
-
-            controls.update();
-            renderer.render(scene, camera);
-        }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        animate();
-    </script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f7f4" />
+    <meta
+      name="description"
+      content="プロペラとモータ内部のコイルを回して、電磁誘導とエネルギー変換を観察する3D実験室。"
+    />
+    <title>回すと、電気が生まれる。｜エネルギー変換ラボ</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2322664e'/%3E%3Cpath d='M37 9 17 35h13l-3 20 21-29H34z' fill='%23dcf49a'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="エネルギー変換ラボ ホーム"
+        ><span class="brand-symbol" aria-hidden="true">ϟ</span
+        ><span
+          >ENERGY LAB<span class="brand-ja">エネルギー変換ラボ</span></span
+        ></a
+      ><span class="header-note"
+        ><span class="small-dot"></span>さわって学ぶ、3D実験室</span
+      >
+    </header>
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">EXPERIMENT 01 <span>／</span> 電磁誘導</p>
+          <h1 id="page-title">回すと、<span>電気が生まれる。</span></h1>
+          <p class="intro-copy">
+            風で回るプロペラ。その奥では、何が起きている？<br
+              class="mobile-break"
+            />モータの中をのぞいて、エネルギーの旅を見てみよう。
+          </p>
+        </div>
+        <div class="lesson-tag">
+          <span aria-hidden="true">↻</span>
+          <div>運動エネルギーから<br /><strong>電気エネルギーへ</strong></div>
+        </div>
+      </section>
+      <ol class="energy-flow" aria-label="エネルギーが伝わる順番">
+        <li>
+          <span class="step-number">01</span
+          ><span class="step-icon" aria-hidden="true">≋</span>
+          <div><strong>風を受ける</strong><small>風のエネルギー</small></div>
+        </li>
+        <li>
+          <span class="step-number">02</span
+          ><span class="step-icon" aria-hidden="true">↻</span>
+          <div><strong>コイルが回る</strong><small>運動エネルギー</small></div>
+        </li>
+        <li class="induction-step">
+          <span class="step-number">03</span
+          ><span class="step-icon" aria-hidden="true">ϟ</span>
+          <div><strong>電気が生まれる</strong><small>電磁誘導</small></div>
+        </li>
+        <li>
+          <span class="step-number">04</span
+          ><span class="step-icon" aria-hidden="true">☼</span>
+          <div><strong>LEDが光る</strong><small>光のエネルギー</small></div>
+        </li>
+      </ol>
+      <section class="experiment" aria-label="電磁誘導の3Dシミュレーション">
+        <section class="apparatus-panel" aria-labelledby="overview-title">
+          <div class="panel-heading">
+            <div>
+              <span class="section-index">01 / OVERVIEW</span>
+              <h2 id="overview-title">装置全体を見てみよう</h2>
+            </div>
+            <span id="run-status" class="status-pill" role="status"
+              ><i></i>停止中</span
+            >
+          </div>
+          <div class="viewport overview-viewport" id="overview-view">
+            <div class="scene-loading">3Dモデルを準備しています…</div>
+            <div class="object-label label-propeller">
+              <span>1</span>
+              <div>プロペラ<small>風を受けて回る</small></div>
+            </div>
+            <div class="object-label label-motor">
+              <span>2</span>
+              <div>モータ<small>中のコイルも回る</small></div>
+            </div>
+            <div class="object-label label-led">
+              <span>4</span>
+              <div>LED<small id="led-caption">回して光らせよう</small></div>
+            </div>
+            <span class="view-hint"
+              ><span aria-hidden="true">⤧</span> ドラッグで回転 ·
+              スクロールで拡大</span
+            ><button
+              class="reset-view"
+              id="reset-view"
+              aria-label="3Dの視点を元に戻す"
+              title="視点をリセット"
+            >
+              ↺
+            </button>
+          </div>
+          <div class="experiment-controls">
+            <button class="play-button" id="play-button">
+              <span id="play-icon" aria-hidden="true">▶</span
+              ><span id="play-label">回してみる</span>
+            </button>
+            <div class="speed-control">
+              <div class="speed-caption">
+                <label for="speed">回転の速さ</label
+                ><output id="speed-value" for="speed">60<span>%</span></output>
+              </div>
+              <input id="speed" type="range" min="0" max="100" value="60" />
+              <div class="range-labels">
+                <span>ゆっくり</span><span>速く</span>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section class="motor-panel" aria-labelledby="motor-title">
+          <div class="panel-heading">
+            <div>
+              <span class="section-index">02 / LOOK INSIDE</span>
+              <h2 id="motor-title">モータの中をのぞこう</h2>
+            </div>
+            <span class="zoom-tag">拡大図</span>
+          </div>
+          <div class="view-tabs" role="group" aria-label="モータの見え方">
+            <button data-mode="closed" aria-pressed="false">外から</button
+            ><button data-mode="cutaway" aria-pressed="true">中を見る</button
+            ><button data-mode="exploded" aria-pressed="false">分解する</button>
+          </div>
+          <div class="viewport detail-viewport" id="motor-view">
+            <div class="scene-loading">3Dモデルを準備しています…</div>
+            <div class="detail-label coil-label">
+              <span class="legend-dot copper"></span><strong>コイル</strong
+              ><small>軸といっしょに回転</small>
+            </div>
+            <div class="detail-label magnet-label">
+              <span class="legend-dot magnet"></span><strong>磁石</strong
+              ><small>回らずに固定</small>
+            </div>
+            <div class="detail-label brush-label">
+              <strong>整流子・ブラシ</strong><small>電気を取り出す</small>
+            </div>
+            <div class="closed-message" hidden>
+              カバーの中に、磁石とコイルがあります。<br /><strong
+                >「中を見る」で確かめよう。</strong
+              >
+            </div>
+            <span class="magnetic-caption">N → S　磁界の向き</span>
+          </div>
+          <div class="detail-options">
+            <label class="checkbox-label"
+              ><input type="checkbox" id="show-field" checked /><span
+                >磁界を表示</span
+              ></label
+            ><span class="sync-note"><i></i>プロペラと同じ回転</span>
+          </div>
+          <div class="discovery">
+            <span class="discovery-icon" aria-hidden="true">!</span>
+            <p>
+              <strong>回っているのは、中のコイル。</strong
+              ><br />磁石の間でコイルが回ると、コイルを貫く磁束が変わり、電圧が生まれます。
+            </p>
+          </div>
+        </section>
+      </section>
+      <section class="observation" aria-labelledby="observation-title">
+        <div class="observation-copy">
+          <span class="section-index">03 / OBSERVE</span>
+          <h2 id="observation-title">回転と発電を、つなげて見よう。</h2>
+          <p id="observation-message">
+            「回してみる」を押すと、コイルと電気の動きが見えます。
+          </p>
+        </div>
+        <div class="meter-block">
+          <div class="meter-heading">
+            <span>発電の強さ</span
+            ><strong id="power-value">0<small>%</small></strong>
+          </div>
+          <div class="power-track"><div id="power-fill"></div></div>
+          <div class="meter-footer"><span>弱い</span><span>強い</span></div>
+          <p class="relative-note">整流後の電圧の目安（相対値）</p>
+        </div>
+        <div class="wave-block">
+          <div class="wave-heading">
+            <span>コイル1回転での変化</span
+            ><span class="wave-key"><i></i>整流後の電圧</span>
+          </div>
+          <svg
+            id="wave-chart"
+            viewBox="0 0 300 90"
+            role="img"
+            aria-label="1回転のあいだに2回山が現れる、整流後の電圧の模式グラフ"
+          >
+            <path d="M8 12H292M8 46H292M8 80H292" class="chart-grid" />
+            <path id="wave-path" />
+            <line id="wave-marker" x1="8" y1="8" x2="8" y2="80" />
+            <circle id="wave-dot" cx="8" cy="80" r="4" />
+          </svg>
+          <div class="graph-labels">
+            <span>0°</span><span>180°</span><span>360°</span>
+          </div>
+        </div>
+      </section>
+      <div class="learning-note">
+        <span aria-hidden="true">ⓘ</span>
+        <p>
+          モータは、軸を外から回すと発電機としてもはたらきます。この図では、コイル1組と整流子でしくみを単純化しています。内部の形・回転の速さ・発電量は、実物を再現した測定値ではありません。LEDには光り始める電圧があるため、ゆっくり回すと光りにくくなります。
+        </p>
+      </div>
+      <noscript
+        ><p class="error-message">
+          この実験にはJavaScriptが必要です。ブラウザのJavaScriptを有効にしてください。
+        </p></noscript
+      >
+    </main>
+    <footer>
+      <span
+        >ENERGY LAB
+        <span class="footer-dot">·</span> 見えないしくみを、見える学びに。</span
+      ><a
+        href="https://github.com/Koji432/Energy_3D0923"
+        target="_blank"
+        rel="noopener noreferrer"
+        >この教材について ↗</a
+      >
+    </footer>
+    <script src="vendor/three.min.js"></script>
+    <script src="vendor/OrbitControls.js"></script>
+    <script src="startup.js"></script>
+  </body>
 </html>
