@@ -417,3 +417,24 @@ input[type="range"] {
     scroll-behavior: auto !important;
   }
 }
+
+.current-key {
+  position: absolute;
+  bottom: 18px;
+  left: 20px;
+  font-size: 11px;
+  color: #9a751f;
+  pointer-events: auto;
+  z-index: 2;
+}
+.model-badge {
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #89917f;
+  margin-left: 6px;
+  border: 1px solid #e0e5d8;
+  border-radius: 4px;
+  padding: 3px 5px;
+  white-space: nowrap;
+}

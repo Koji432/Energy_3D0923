@@ -1,4 +1,4 @@
-# Energy_3D0923 — Energy 3D
+# Energy_3D0923
 
 黒いモーターを備えた風力発電装置の3Dモデルです。モーターをクリックすると内部が開き、固定された磁石の間でコイルが回る様子を観察できます。画面は模型と操作ボタンを中心に構成しています。
 
@@ -30,29 +30,47 @@ GitHub Pagesではリポジトリのルートを公開対象にできます。`v
 | 3D画面にフォーカスして矢印キー／`＋`・`−`         | キーボードで視点変更・拡大縮小ができます。                                               |
 | 「↺」                                             | 装置全体と内部表示の視点を初期状態に戻します。                                           |
 
-## 計算モデル
+## 計算モデルと表示
 
-ブラシ付きDCモーターを発電機として使うしくみを、コイル1組と整流子で単純化しています。固定された磁石の間でコイルを回すと、コイルを貫く磁束が変化し、誘導起電力が生じます。整流子・ブラシを介して電気を取り出します。
+ブラシ付きDCモーターを発電機として使うしくみを、単一巻線・二分割整流子・固定ブラシ・LED負荷で表しています。磁石間の磁界はN極からS極へ向く一様磁界です。`θ` は磁界方向を0とした巻線面の向き付き法線の回転角、`ω = dθ/dt` は角速度（rad/s）です。
 
-`physics.mjs` は磁束を `cos θ`、コイル内の電圧を `speed × sin θ`、整流後の出力をその絶対値として計算します。`θ` はコイル面の法線と磁界のなす角です。回転角の計算にはフレーム数ではなく経過秒数を使います。LEDには表示用の発光しきい値を設けているため、低速では光りにくくなります。
+`physics.mjs` は鎖交磁束 `λ = NBA cos θ`（Wb·turn）と、ファラデーの法則 `e = −dλ/dt = NBAω sin θ`（V）を計算します。巻線の起電力は半回転ごとに符号が変わり、整流子が接続を切り替えて外部へ脈流を取り出します。逆回転では端子極性も反転します。`terminalEmf` は抵抗での電圧降下を差し引く前の起電力です。
 
-内部の形・速度・電圧・LEDの明るさは実物のキットを測定した値ではありません。導線上の粒は電気の流れを示す記号です。内部抵抗や負荷による速度低下などの詳細な計算は行わず、分解表示でも磁界を再計算しません。
+LEDは順方向の定電圧降下近似で、電流は `I = max(0, (terminalEmf − Vf) / R)`（A）です。逆方向と順方向電圧不足では電流を0とします。実際のLEDの電流・電圧特性は連続的で、温度や品種によって変わります。整流子の絶縁間隙（`θ = kπ` の前後0.06 rad）では接触が開き、この準静的モデルでは電流を0とします。接触開放時の `terminalEmf = 0` は電源が切り離されたことを表し、浮遊接点の電位を予測する値ではありません。
+
+| 教育用の仮定値                         | 値         |
+| -------------------------------------- | ---------- |
+| 巻数 `N`                               | 500        |
+| 磁束密度 `B`                           | 0.4 T      |
+| 1巻の面積 `A`                          | 0.0034 m²  |
+| 最高回転数                             | 0.7 回転/s |
+| LED順方向電圧 `Vf`                     | 1.8 V      |
+| 巻線・ブラシなどを含む合成直列抵抗 `R` | 60 Ω       |
+
+これらは実物のキットの測定値ではありません。表示する巻数は省略し、部品寸法も縮尺どおりではありません。単一巻線による脈動を見やすくした基本模型で、複数巻線・多分割整流子を持つ実機の細部は再現していません。
+
+固定矢印は**慣用電流**の向きを示し、明るさは計算した電流に連動します。外部では＋端子からLEDのアノード→カソードを通り−端子へ、巻線では整流子の接続に合わせて向きが変わります。金属内の電子の平均移動方向は慣用電流と逆です。矢印は電子の移動速度や電場・エネルギーの伝わる速度を表しません。
+
+自己インダクタンス、容量、逆漏れ・逆方向降伏、ブラシの火花、電機子反作用、摩擦、慣性と負荷による速度低下は省略しています。回転数は操作で与え、経過秒数から角度を求めます。回転を妨げる電磁トルクと、`機械入力 = LED消費電力 + 抵抗損失` の関係を計算しますが、そのトルクによる回転数の変化は解きません。分解表示は観察用で、部品間隔に応じた磁界の再計算はしません。LEDの見かけの明るさは電流の相対表示です。
 
 ## テストと構成
 
 Node.jsの標準テストランナーを使用します。追加パッケージは不要です。
 
 ```sh
-node --test physics.test.mjs
+node --test physics.test.mjs circuit-geometry.test.mjs
 ```
 
-停止時の出力、磁束と電圧の位相、ファラデーの法則との整合性、極性、速度とLEDの関係、フレームレートに依存しない回転、不正値の扱いを検証します。
+停止時の出力、ファラデーの法則、磁束と起電力の位相、整流子の接続と極性、LED電流、電力収支、フレームレートに依存しない回転、不正値の扱いを検証します。
 
-`index.html` と `styles.css` が画面、`startup.js` が起動処理、`app.js` が操作とアニメーションの同期、`scene.js` が3D描画、`physics.mjs` が計算を担当します。
+`index.html` と `styles.css` が画面、`startup.js` が起動処理、`app.js` が操作とアニメーションの同期、`scene.js` が3D描画、`physics.mjs` が物理計算、`circuit-geometry.mjs` が巻線と整流子への接続を担当します。
 
 `vendor/` にThree.js r128とOrbitControlsを同梱しています。MITライセンスの著作権表示・本文は [`vendor/LICENSE.three`](vendor/LICENSE.three) を参照してください。
 
 ## 参考資料
 
+- [OpenStax University Physics Vol. 2, 13.6 Electric Generators and Back Emf](https://openstax.org/books/university-physics-volume-2/pages/13-6-electric-generators-and-back-emf)：回転コイルの起電力と二分割整流子の脈流出力。
+- [OpenStax University Physics Vol. 2, 9.1 Electrical Current](https://openstax.org/books/university-physics-volume-2/pages/9-1-electrical-current)：慣用電流の定義と電子の移動方向。
 - [マブチモーター「主要部品の役割」](https://www.mabuchi-motor.co.jp/product/knowledge/structure/function.html)：固定された磁石、巻線、整流子・ブラシの構成。
-- [maxon「maxon Motors as Generators」](https://support.maxongroup.com/hc/en-us/articles/360004496254-maxon-Motors-as-Generators)：モーターによる発電、整流、速度と誘導電圧の関係。
+- [maxon「maxon Motors as Generators」](https://support.maxongroup.com/hc/en-us/articles/360004496254-maxon-Motors-as-Generators)：整流、速度と誘導電圧、負荷電流と内部抵抗による端子電圧降下。
+- [ams OSRAM AN040「Comparison of simple LED circuits for low power LEDs」](https://look.ams-osram.com/m/36d9172a41ddeff2/original/Comparison-of-simple-LED-circuits-for-low-power-LEDs.pdf)：LEDの順・逆方向特性、非線形性と電流制限。
