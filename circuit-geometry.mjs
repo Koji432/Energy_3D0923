@@ -42,6 +42,46 @@ export function createWindingPoints({
   return points;
 }
 
+/**
+ * Closed XY contour for one electrically isolated copper commutator sector.
+ * Segment 0 occupies +Y; segment 1 occupies -Y. Extrude along Z without any
+ * additional rotation about Z. The central opening leaves room for a dielectric
+ * hub between the metal shaft and copper, preventing a visual electrical short.
+ */
+export function createCommutatorSectorPoints(
+  segment,
+  { innerRadius = 0.115, outerRadius = 0.22, halfGap = 0.06, steps = 32 } = {},
+) {
+  if (segment !== 0 && segment !== 1) {
+    throw new RangeError("segment must be 0 or 1");
+  }
+  if (
+    ![innerRadius, outerRadius, halfGap].every(Number.isFinite) ||
+    innerRadius <= 0 ||
+    outerRadius <= innerRadius ||
+    halfGap <= 0 ||
+    halfGap >= Math.PI / 2 ||
+    !Number.isInteger(steps) ||
+    steps < 2
+  ) {
+    throw new RangeError("invalid annular sector dimensions");
+  }
+
+  const start = segment * Math.PI + halfGap;
+  const sweep = Math.PI - 2 * halfGap;
+  const points = [];
+  for (let i = 0; i <= steps; i++) {
+    const angle = start + (sweep * i) / steps;
+    points.push([outerRadius * Math.cos(angle), outerRadius * Math.sin(angle)]);
+  }
+  for (let i = steps; i >= 0; i--) {
+    const angle = start + (sweep * i) / steps;
+    points.push([innerRadius * Math.cos(angle), innerRadius * Math.sin(angle)]);
+  }
+  points.push([...points[0]]);
+  return points;
+}
+
 const immutablePath = (points) => Object.freeze(points.map(Object.freeze));
 
 /**

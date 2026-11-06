@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  createCommutatorSectorPoints,
   createWindingPoints,
   WINDING_LEAD_A,
   WINDING_LEAD_B,
@@ -27,6 +28,123 @@ const rotateZ = ([x, y, z], angle) => [
   x * Math.sin(angle) + y * Math.cos(angle),
   z,
 ];
+
+// Ray crossing checks the polygon actually extruded by the renderer, rather
+// than assuming that an ideal circular annulus was constructed correctly.
+function polygonContains(points, [x, y]) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, yi] = points[i];
+    const [xj, yj] = points[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function segmentDistanceFromOrigin(a, b) {
+  const delta = subtract(b, a);
+  const squaredLength = dot(delta, delta);
+  const t =
+    squaredLength === 0
+      ? 0
+      : Math.max(0, Math.min(1, -dot(a, delta) / squaredLength));
+  return Math.hypot(...add(a, scale(delta, t)));
+}
+
+test("commutator copper has an insulated shaft opening and separated sectors", () => {
+  const upper = createCommutatorSectorPoints(0);
+  const lower = createCommutatorSectorPoints(1);
+  for (const [points, sign] of [
+    [upper, 1],
+    [lower, -1],
+  ]) {
+    assert.deepEqual(points[0], points.at(-1), "closed extrusion contour");
+    assert.ok(points.every((point) => point.every(Number.isFinite)));
+    assert.ok(
+      points.every(([, y]) => sign * y > 0),
+      "copper sectors cannot overlap across the gap",
+    );
+    assert.equal(polygonContains(points, [0, 0]), false);
+    let twiceArea = 0;
+    for (let i = 1; i < points.length; i++) {
+      twiceArea +=
+        points[i - 1][0] * points[i][1] - points[i][0] * points[i - 1][1];
+      assert.ok(
+        segmentDistanceFromOrigin(points[i - 1], points[i]) > 0.075,
+        "every copper polygon edge clears the shaft",
+      );
+    }
+    assert.ok(twiceArea > 0, "outer arc is CCW and inner arc is reversed");
+    for (let i = 0; i < 64; i++) {
+      const angle = (Math.PI * 2 * i) / 64;
+      assert.equal(
+        polygonContains(points, [
+          0.075 * Math.cos(angle),
+          0.075 * Math.sin(angle),
+        ]),
+        false,
+      );
+    }
+  }
+  assert.ok(polygonContains(upper, WINDING_LEAD_A.at(-1)));
+  assert.ok(polygonContains(lower, WINDING_LEAD_B.at(-1)));
+  assert.equal(polygonContains(lower, WINDING_LEAD_A.at(-1)), false);
+  assert.equal(polygonContains(upper, WINDING_LEAD_B.at(-1)), false);
+});
+
+test("actual copper contours contact the correct brushes and open at commutation", () => {
+  const sectors = [
+    createCommutatorSectorPoints(0),
+    createCommutatorSectorPoints(1),
+  ];
+  const contacts = (angle, side) => {
+    const localBrush = rotateZ([side * 0.215, 0, 1.24], -angle);
+    return sectors.flatMap((polygon, segment) =>
+      polygonContains(polygon, localBrush) ? [segment] : [],
+    );
+  };
+  assert.deepEqual(contacts(Math.PI / 2, 1), [1]);
+  assert.deepEqual(contacts(Math.PI / 2, -1), [0]);
+  assert.deepEqual(contacts(Math.PI * 1.5, 1), [0]);
+  assert.deepEqual(contacts(Math.PI * 1.5, -1), [1]);
+  for (const angle of [0, 0.03, Math.PI - 0.03, Math.PI, Math.PI * 2]) {
+    assert.deepEqual(contacts(angle, 1), []);
+    assert.deepEqual(contacts(angle, -1), []);
+  }
+  for (const angle of [0.1, 1, 2.9, 3.3, 5.5, 6.1]) {
+    const expectedPositiveSegment = Math.sin(angle) > 0 ? 1 : 0;
+    assert.deepEqual(contacts(angle, 1), [expectedPositiveSegment]);
+    assert.deepEqual(contacts(angle, -1), [1 - expectedPositiveSegment]);
+  }
+});
+
+test("commutator dimensions can vary but invalid copper sectors are rejected", () => {
+  const custom = createCommutatorSectorPoints(0, {
+    innerRadius: 0.13,
+    outerRadius: 0.3,
+    halfGap: 0.1,
+    steps: 12,
+  });
+  assert.equal(custom.length, 2 * 13 + 1);
+  assert.equal(polygonContains(custom, [0, 0.2]), true);
+  assert.equal(polygonContains(custom, [0, 0.1]), false);
+  for (const segment of [-1, 2, NaN]) {
+    assert.throws(() => createCommutatorSectorPoints(segment), RangeError);
+  }
+  for (const options of [
+    { innerRadius: 0 },
+    { innerRadius: 0.3 },
+    { outerRadius: Infinity },
+    { halfGap: 0 },
+    { halfGap: Math.PI / 2 },
+    { steps: 1 },
+    { steps: 2.5 },
+  ]) {
+    assert.throws(() => createCommutatorSectorPoints(0, options), RangeError);
+  }
+});
 
 // For straight segments and rigid rotation, v x B is affine in position.
 // Its midpoint integral is exact, independently of the winding implementation.

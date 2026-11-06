@@ -1,6 +1,7 @@
 import { GENERATOR_PARAMETERS } from "./physics.mjs";
 import {
   createWindingPoints,
+  createCommutatorSectorPoints,
   WINDING_LEAD_A,
   WINDING_LEAD_B,
 } from "./circuit-geometry.mjs";
@@ -141,27 +142,30 @@ function createMotor() {
   );
   const windingFlow = currentMarkers(rotor, windingCurve, 4, 0.23);
   cylinder(rotor, 0.075, 4.5, [0, 0, 0.22], steel);
-  // Two insulated semicircular commutator segments rotate with the coil.
+  // Annular copper sectors sit on a dielectric hub, isolated from the metal shaft.
+  // Contours are already in XY: segment 0 is +Y, segment 1 is -Y at theta=0.
   const commutator = new T.Group();
   commutator.position.z = 1.22;
-  commutator.rotation.z = Math.PI / 2;
   rotor.add(commutator);
+  cylinder(
+    commutator,
+    0.115,
+    0.44,
+    [0, 0, 0],
+    material(0x343a35, { metalness: 0, roughness: 0.85 }),
+  );
   for (let i = 0; i < 2; i++) {
-    const segment = mesh(
-      new T.CylinderGeometry(
-        0.22,
-        0.22,
-        0.4,
-        24,
-        1,
-        false,
-        i * Math.PI + GENERATOR_PARAMETERS.commutatorHalfGap,
-        Math.PI - 2 * GENERATOR_PARAMETERS.commutatorHalfGap,
-      ),
+    const shape = new T.Shape(
+      createCommutatorSectorPoints(i, {
+        halfGap: GENERATOR_PARAMETERS.commutatorHalfGap,
+      }).map((p) => new T.Vector2(...p)),
+    );
+    mesh(
+      new T.ExtrudeGeometry(shape, { depth: 0.4, bevelEnabled: false }),
       copper,
       commutator,
+      [0, 0, -0.2],
     );
-    segment.rotation.x = Math.PI / 2;
   }
   // A attaches to the +Y segment; B to -Y. For +Z rotation the +X brush is positive.
   const leadA = tube(rotor, WINDING_LEAD_A, 0.018, copper);
