@@ -166,9 +166,9 @@ function createMotor() {
       material(side === 1 ? 0xd0745d : 0x44574e),
     );
   }
-  const shellMat = material(0xaab8ae, {
-    metalness: 0.58,
-    roughness: 0.4,
+  const shellMat = material(0x16191a, {
+    metalness: 0.18,
+    roughness: 0.6,
     transparent: true,
     opacity: 0.12,
     depthWrite: false,
@@ -180,7 +180,7 @@ function createMotor() {
   for (const z of [-1.44, 1.28]) {
     mesh(
       new T.TorusGeometry(1.49, 0.026, 8, 72),
-      material(0xb2bfb4, { transparent: true, opacity: 0.55 }),
+      material(0x313637, { transparent: true, opacity: 0.55 }),
       rings,
       [0, 0, z],
     );
@@ -190,9 +190,9 @@ function createMotor() {
     1.49,
     0.12,
     [0, 0, -1.48],
-    material(0xc9d3c8, { metalness: 0.4 }),
+    material(0x191c1d, { metalness: 0.18 }),
   );
-  const endCap = cylinder(root, 0.31, 0.16, [0, 0, 1.36], material(0xd7dfd3));
+  const endCap = cylinder(root, 0.31, 0.16, [0, 0, 1.36], material(0x24292a));
   const field = new T.Group();
   inside.add(field);
   // Stationary field arrows go from N (+X direction) to S. They are not emitted waves.
@@ -541,6 +541,7 @@ function view(element, position, target, detail = false) {
   return {
     scene,
     camera,
+    canvas,
     controls,
     render() {
       if (onscreen) {
@@ -553,7 +554,7 @@ function view(element, position, target, detail = false) {
     },
   };
 }
-export function createExperiment() {
+export function createExperiment({ onMotorSelect = () => {} } = {}) {
   if (!T || !T.OrbitControls)
     throw new Error("3Dライブラリを読み込めませんでした。");
   const overview = view(
@@ -562,6 +563,79 @@ export function createExperiment() {
     [0, 3.5, 0],
   );
   const kit = createKit(overview.scene);
+  const raycaster = new T.Raycaster(),
+    pointer = new T.Vector2();
+  let pointerStart;
+  function motorHit(event) {
+    const rect = overview.canvas.getBoundingClientRect();
+    pointer.set(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      (-(event.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    raycaster.setFromCamera(pointer, overview.camera);
+    const hit = raycaster
+      .intersectObjects(overview.scene.children, true)
+      .find((hit) => {
+        for (let object = hit.object; object; object = object.parent)
+          if (!object.visible) return false;
+        return true;
+      });
+    if (!hit) return false;
+    for (let object = hit.object; object; object = object.parent)
+      if (object === kit.motor.root) return true;
+    return false;
+  }
+  const activePointers = new Set();
+  overview.canvas.addEventListener("pointerdown", (event) => {
+    activePointers.add(event.pointerId);
+    overview.canvas.setPointerCapture(event.pointerId);
+    pointerStart =
+      activePointers.size === 1 && event.button === 0
+        ? {
+            id: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            moved: false,
+          }
+        : undefined;
+  });
+  overview.canvas.addEventListener("pointerup", (event) => {
+    if (
+      activePointers.size === 1 &&
+      pointerStart?.id === event.pointerId &&
+      !pointerStart.moved &&
+      Math.hypot(
+        event.clientX - pointerStart.x,
+        event.clientY - pointerStart.y,
+      ) < 6 &&
+      motorHit(event)
+    )
+      onMotorSelect();
+    activePointers.delete(event.pointerId);
+    pointerStart = undefined;
+  });
+  overview.canvas.addEventListener("pointercancel", (event) => {
+    activePointers.delete(event.pointerId);
+    pointerStart = undefined;
+  });
+  overview.canvas.addEventListener("pointermove", (event) => {
+    if (
+      pointerStart?.id === event.pointerId &&
+      Math.hypot(
+        event.clientX - pointerStart.x,
+        event.clientY - pointerStart.y,
+      ) >= 6
+    )
+      pointerStart.moved = true;
+    overview.canvas.style.cursor = event.buttons
+      ? "grabbing"
+      : motorHit(event)
+        ? "pointer"
+        : "grab";
+  });
+  const motorButton = document.getElementById("motor-open");
+  const motorAnchor = v(0.55, 6.3, -0.42);
+
   const detail = view(
     document.getElementById("motor-view"),
     [4.3, 2.8, 7.2],
@@ -578,7 +652,7 @@ export function createExperiment() {
     update(state, sample, progress) {
       kit.update(
         state.angle,
-        state.mode,
+        state.inside ? "cutaway" : "closed",
         state.field,
         sample.led,
         sample.output,
@@ -588,7 +662,20 @@ export function createExperiment() {
       // Keep exploded parts in frame without changing the user's chosen viewing direction.
       motor.root.scale.setScalar(state.mode === "exploded" ? 0.78 : 1);
       overview.render();
-      detail.render();
+      if (state.inside) detail.render();
+      const point = motorAnchor.clone().project(overview.camera);
+      const width = overview.canvas.clientWidth,
+        height = overview.canvas.clientHeight;
+      const left = Math.max(
+        30,
+        Math.min(width - 112, ((point.x + 1) * width) / 2 + 32),
+      );
+      const top = Math.max(
+        12,
+        Math.min(height - 45, ((-point.y + 1) * height) / 2 - 12),
+      );
+      motorButton.style.left = left + "px";
+      motorButton.style.top = top + "px";
     },
   };
 }

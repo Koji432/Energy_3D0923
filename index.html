@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f5f7f4" />
+    <meta name="theme-color" content="#f5f6f2" />
     <meta
       name="description"
-      content="プロペラとモータ内部のコイルを回して、電磁誘導とエネルギー変換を観察する3D実験室。"
+      content="モーター内部の回転コイルを観察できる3Dモデル。"
     />
-    <title>回すと、電気が生まれる。｜エネルギー変換ラボ</title>
+    <title>Energy 3D</title>
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2322664e'/%3E%3Cpath d='M37 9 17 35h13l-3 20 21-29H34z' fill='%23dcf49a'/%3E%3C/svg%3E"
@@ -16,218 +16,82 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="site-header">
-      <a class="brand" href="./" aria-label="エネルギー変換ラボ ホーム"
-        ><span class="brand-symbol" aria-hidden="true">ϟ</span
-        ><span
-          >ENERGY LAB<span class="brand-ja">エネルギー変換ラボ</span></span
-        ></a
-      ><span class="header-note"
-        ><span class="small-dot"></span>さわって学ぶ、3D実験室</span
-      >
-    </header>
-    <main>
-      <section class="intro" aria-labelledby="page-title">
-        <div>
-          <p class="eyebrow">EXPERIMENT 01 <span>／</span> 電磁誘導</p>
-          <h1 id="page-title">回すと、<span>電気が生まれる。</span></h1>
-          <p class="intro-copy">
-            風で回るプロペラ。その奥では、何が起きている？<br
-              class="mobile-break"
-            />モータの中をのぞいて、エネルギーの旅を見てみよう。
-          </p>
-        </div>
-        <div class="lesson-tag">
-          <span aria-hidden="true">↻</span>
-          <div>運動エネルギーから<br /><strong>電気エネルギーへ</strong></div>
-        </div>
-      </section>
-      <ol class="energy-flow" aria-label="エネルギーが伝わる順番">
-        <li>
-          <span class="step-number">01</span
-          ><span class="step-icon" aria-hidden="true">≋</span>
-          <div><strong>風を受ける</strong><small>風のエネルギー</small></div>
-        </li>
-        <li>
-          <span class="step-number">02</span
-          ><span class="step-icon" aria-hidden="true">↻</span>
-          <div><strong>コイルが回る</strong><small>運動エネルギー</small></div>
-        </li>
-        <li class="induction-step">
-          <span class="step-number">03</span
-          ><span class="step-icon" aria-hidden="true">ϟ</span>
-          <div><strong>電気が生まれる</strong><small>電磁誘導</small></div>
-        </li>
-        <li>
-          <span class="step-number">04</span
-          ><span class="step-icon" aria-hidden="true">☼</span>
-          <div><strong>LEDが光る</strong><small>光のエネルギー</small></div>
-        </li>
-      </ol>
-      <section class="experiment" aria-label="電磁誘導の3Dシミュレーション">
-        <section class="apparatus-panel" aria-labelledby="overview-title">
-          <div class="panel-heading">
-            <div>
-              <span class="section-index">01 / OVERVIEW</span>
-              <h2 id="overview-title">装置全体を見てみよう</h2>
-            </div>
-            <span id="run-status" class="status-pill" role="status"
-              ><i></i>停止中</span
-            >
-          </div>
+    <main class="lab" id="lab">
+      <header class="toolbar">
+        <span class="brand"
+          ><span class="brand-symbol" aria-hidden="true">ϟ</span>ENERGY 3D</span
+        ><button
+          class="icon-button"
+          id="reset-view"
+          aria-label="視点を元に戻す"
+          title="視点を元に戻す"
+        >
+          ↺
+        </button>
+      </header>
+      <div class="workspace" id="workspace">
+        <section class="apparatus-panel" aria-label="風力発電装置">
           <div class="viewport overview-viewport" id="overview-view">
-            <div class="scene-loading">3Dモデルを準備しています…</div>
-            <div class="object-label label-propeller">
-              <span>1</span>
-              <div>プロペラ<small>風を受けて回る</small></div>
-            </div>
-            <div class="object-label label-motor">
-              <span>2</span>
-              <div>モータ<small>中のコイルも回る</small></div>
-            </div>
-            <div class="object-label label-led">
-              <span>4</span>
-              <div>LED<small id="led-caption">回して光らせよう</small></div>
-            </div>
-            <span class="view-hint"
-              ><span aria-hidden="true">⤧</span> ドラッグで回転 ·
-              スクロールで拡大</span
-            ><button
-              class="reset-view"
-              id="reset-view"
-              aria-label="3Dの視点を元に戻す"
-              title="視点をリセット"
+            <div class="scene-loading">読み込み中…</div>
+            <button
+              class="motor-open"
+              id="motor-open"
+              aria-expanded="false"
+              aria-controls="motor-panel"
+              aria-label="モーターの内部を表示"
             >
-              ↺
+              モーター <span aria-hidden="true">↗</span>
             </button>
-          </div>
-          <div class="experiment-controls">
-            <button class="play-button" id="play-button">
-              <span id="play-icon" aria-hidden="true">▶</span
-              ><span id="play-label">回してみる</span>
-            </button>
-            <div class="speed-control">
-              <div class="speed-caption">
-                <label for="speed">回転の速さ</label
-                ><output id="speed-value" for="speed">60<span>%</span></output>
-              </div>
-              <input id="speed" type="range" min="0" max="100" value="60" />
-              <div class="range-labels">
-                <span>ゆっくり</span><span>速く</span>
-              </div>
-            </div>
           </div>
         </section>
-        <section class="motor-panel" aria-labelledby="motor-title">
+        <aside
+          class="motor-panel"
+          id="motor-panel"
+          aria-labelledby="motor-title"
+          hidden
+        >
           <div class="panel-heading">
-            <div>
-              <span class="section-index">02 / LOOK INSIDE</span>
-              <h2 id="motor-title">モータの中をのぞこう</h2>
-            </div>
-            <span class="zoom-tag">拡大図</span>
+            <h1 id="motor-title">モーター内部</h1>
+            <button
+              class="icon-button close-button"
+              id="close-motor"
+              aria-label="モーターの内部を閉じる"
+              title="閉じる"
+            >
+              ×
+            </button>
           </div>
-          <div class="view-tabs" role="group" aria-label="モータの見え方">
-            <button data-mode="closed" aria-pressed="false">外から</button
-            ><button data-mode="cutaway" aria-pressed="true">中を見る</button
+          <div class="view-tabs" role="group" aria-label="内部の見え方">
+            <button data-mode="cutaway" aria-pressed="true">中を見る</button
             ><button data-mode="exploded" aria-pressed="false">分解する</button>
           </div>
           <div class="viewport detail-viewport" id="motor-view">
-            <div class="scene-loading">3Dモデルを準備しています…</div>
-            <div class="detail-label coil-label">
-              <span class="legend-dot copper"></span><strong>コイル</strong
-              ><small>軸といっしょに回転</small>
-            </div>
-            <div class="detail-label magnet-label">
-              <span class="legend-dot magnet"></span><strong>磁石</strong
-              ><small>回らずに固定</small>
-            </div>
-            <div class="detail-label brush-label">
-              <strong>整流子・ブラシ</strong><small>電気を取り出す</small>
-            </div>
-            <div class="closed-message" hidden>
-              カバーの中に、磁石とコイルがあります。<br /><strong
-                >「中を見る」で確かめよう。</strong
-              >
-            </div>
-            <span class="magnetic-caption">N → S　磁界の向き</span>
+            <div class="scene-loading">読み込み中…</div>
+            <span class="detail-label coil-label"><i></i>コイル</span
+            ><span class="detail-label magnet-label"><i></i>磁石</span>
           </div>
-          <div class="detail-options">
-            <label class="checkbox-label"
-              ><input type="checkbox" id="show-field" checked /><span
-                >磁界を表示</span
-              ></label
-            ><span class="sync-note"><i></i>プロペラと同じ回転</span>
-          </div>
-          <div class="discovery">
-            <span class="discovery-icon" aria-hidden="true">!</span>
-            <p>
-              <strong>回っているのは、中のコイル。</strong
-              ><br />磁石の間でコイルが回ると、コイルを貫く磁束が変わり、電圧が生まれます。
-            </p>
-          </div>
-        </section>
-      </section>
-      <section class="observation" aria-labelledby="observation-title">
-        <div class="observation-copy">
-          <span class="section-index">03 / OBSERVE</span>
-          <h2 id="observation-title">回転と発電を、つなげて見よう。</h2>
-          <p id="observation-message">
-            「回してみる」を押すと、コイルと電気の動きが見えます。
-          </p>
-        </div>
-        <div class="meter-block">
-          <div class="meter-heading">
-            <span>発電の強さ</span
-            ><strong id="power-value">0<small>%</small></strong>
-          </div>
-          <div class="power-track"><div id="power-fill"></div></div>
-          <div class="meter-footer"><span>弱い</span><span>強い</span></div>
-          <p class="relative-note">整流後の電圧の目安（相対値）</p>
-        </div>
-        <div class="wave-block">
-          <div class="wave-heading">
-            <span>コイル1回転での変化</span
-            ><span class="wave-key"><i></i>整流後の電圧</span>
-          </div>
-          <svg
-            id="wave-chart"
-            viewBox="0 0 300 90"
-            role="img"
-            aria-label="1回転のあいだに2回山が現れる、整流後の電圧の模式グラフ"
+          <label class="field-option"
+            ><input type="checkbox" id="show-field" checked />磁界</label
           >
-            <path d="M8 12H292M8 46H292M8 80H292" class="chart-grid" />
-            <path id="wave-path" />
-            <line id="wave-marker" x1="8" y1="8" x2="8" y2="80" />
-            <circle id="wave-dot" cx="8" cy="80" r="4" />
-          </svg>
-          <div class="graph-labels">
-            <span>0°</span><span>180°</span><span>360°</span>
+        </aside>
+      </div>
+      <div class="controls">
+        <button class="play-button" id="play-button">
+          <span id="play-icon" aria-hidden="true">▶</span
+          ><span id="play-label">回す</span>
+        </button>
+        <div class="speed-control">
+          <div class="speed-caption">
+            <label for="speed">速さ</label
+            ><output id="speed-value" for="speed">60<span>%</span></output>
           </div>
+          <input id="speed" type="range" min="0" max="100" value="60" />
         </div>
-      </section>
-      <div class="learning-note">
-        <span aria-hidden="true">ⓘ</span>
-        <p>
-          モータは、軸を外から回すと発電機としてもはたらきます。この図では、コイル1組と整流子でしくみを単純化しています。内部の形・回転の速さ・発電量は、実物を再現した測定値ではありません。LEDには光り始める電圧があるため、ゆっくり回すと光りにくくなります。
-        </p>
       </div>
       <noscript
-        ><p class="error-message">
-          この実験にはJavaScriptが必要です。ブラウザのJavaScriptを有効にしてください。
-        </p></noscript
+        ><p class="error-message">JavaScriptを有効にしてください。</p></noscript
       >
     </main>
-    <footer>
-      <span
-        >ENERGY LAB
-        <span class="footer-dot">·</span> 見えないしくみを、見える学びに。</span
-      ><a
-        href="https://github.com/Koji432/Energy_3D0923"
-        target="_blank"
-        rel="noopener noreferrer"
-        >この教材について ↗</a
-      >
-    </footer>
     <script src="vendor/three.min.js"></script>
     <script src="vendor/OrbitControls.js"></script>
     <script src="startup.js"></script>

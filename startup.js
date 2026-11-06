@@ -13,8 +13,6 @@
     document.querySelectorAll("button, input").forEach(function (control) {
       control.disabled = true;
     });
-    document.getElementById("run-status").textContent =
-      "起動方法をご確認ください";
   }
   if (location.protocol === "file:") {
     unavailable(
