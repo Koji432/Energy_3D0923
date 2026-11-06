@@ -1,7 +1,7 @@
 import { advanceAngle, sampleInduction } from "./physics.mjs";
 const state = {
   playing: false,
-  speed: 0.6,
+  speed: 0.8,
   angle: 0.72,
   inside: false,
   mode: "cutaway",
@@ -11,10 +11,7 @@ const workspace = document.getElementById("workspace"),
   panel = document.getElementById("motor-panel");
 const play = document.getElementById("play-button"),
   speed = document.getElementById("speed");
-let experiment,
-  lastTime,
-  progress = 0,
-  runningFrame;
+let experiment, lastTime, runningFrame;
 function openMotor() {
   if (state.inside) return;
   document.getElementById("motor-open").setAttribute("aria-expanded", "true");
@@ -50,14 +47,12 @@ function updateMode() {
     );
 }
 function frame(time) {
-  const dt =
-    lastTime === undefined ? 0 : Math.min((time - lastTime) / 1000, 0.06);
+  const dt = lastTime === undefined ? 0 : Math.max(0, (time - lastTime) / 1000);
   lastTime = time;
   const currentSpeed = state.playing ? state.speed : 0;
   state.angle = advanceAngle(state.angle, dt, currentSpeed);
   const sample = sampleInduction(state.angle, currentSpeed);
-  progress = (progress + dt * sample.output * 0.8) % 1;
-  experiment.update(state, sample, progress);
+  experiment.update(state, sample);
   runningFrame = requestAnimationFrame(frame);
 }
 function fail() {

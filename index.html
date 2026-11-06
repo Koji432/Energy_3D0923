@@ -28,6 +28,11 @@
         <section class="apparatus-panel" aria-label="風力発電装置">
           <div class="viewport overview-viewport" id="overview-view">
             <div class="scene-loading">読み込み中…</div>
+            <span
+              class="current-key"
+              title="矢印は正電荷を基準にした慣用電流。外部回路では＋端子からLEDのA→Kを経て−端子へ。電子の移動や速度を表していません。"
+              >➜ 電流 I</span
+            >
             <button
               class="motor-open"
               id="motor-open"
@@ -46,7 +51,14 @@
           hidden
         >
           <div class="panel-heading">
-            <h1 id="motor-title">モーター内部</h1>
+            <h1 id="motor-title">
+              モーター内部
+              <span
+                class="model-badge"
+                title="固定磁界・単一巻線・理想接点・抵抗性LED負荷の基本模型。寸法・巻数・定数は実機の測定値ではありません。"
+                >基本模型</span
+              >
+            </h1>
             <button
               class="icon-button close-button"
               id="close-motor"
@@ -78,9 +90,9 @@
         <div class="speed-control">
           <div class="speed-caption">
             <label for="speed">速さ</label
-            ><output id="speed-value" for="speed">60<span>%</span></output>
+            ><output id="speed-value" for="speed">80<span>%</span></output>
           </div>
-          <input id="speed" type="range" min="0" max="100" value="60" />
+          <input id="speed" type="range" min="0" max="100" value="80" />
         </div>
       </div>
       <noscript

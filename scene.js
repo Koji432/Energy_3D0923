@@ -1,3 +1,9 @@
+import { GENERATOR_PARAMETERS } from "./physics.mjs";
+import {
+  createWindingPoints,
+  WINDING_LEAD_A,
+  WINDING_LEAD_B,
+} from "./circuit-geometry.mjs";
 /* Three.js views share one simulation clock; the magnets and housing never rotate. */
 const T = window.THREE;
 const color = {
@@ -36,14 +42,61 @@ function cylinder(parent, radius, length, pos, mat, segments = 32) {
   m.rotation.x = Math.PI / 2;
   return m;
 }
-function tube(parent, points, radius, mat, closed = false) {
-  const curve = new T.CatmullRomCurve3(
-    points.map((p) => v(...p)),
-    closed,
-    "centripetal",
-  );
-  mesh(new T.TubeGeometry(curve, 80, radius, 7, closed), mat, parent);
+function tube(
+  parent,
+  points,
+  radius,
+  mat,
+  closed = false,
+  segments = 80,
+  polyline = false,
+) {
+  let curve;
+  if (polyline) {
+    curve = new T.CurvePath();
+    for (let i = 1; i < points.length; i++)
+      curve.add(new T.LineCurve3(v(...points[i - 1]), v(...points[i])));
+  } else
+    curve = new T.CatmullRomCurve3(
+      points.map((p) => v(...p)),
+      closed,
+      "centripetal",
+    );
+  mesh(new T.TubeGeometry(curve, segments, radius, 7, closed), mat, parent);
   return curve;
+}
+// Fixed glyphs denote conventional current, not particles, electron drift or signal speed.
+function currentMarkers(parent, curve, count = 3, length = 0.24) {
+  const arrows = [];
+  for (let i = 0; i < count; i++) {
+    const t = (i + 0.36) / count;
+    const arrow = new T.ArrowHelper(
+      v(1, 0, 0),
+      curve.getPointAt(t),
+      length,
+      0xd99b0b,
+      length * 0.55,
+      length * 0.68,
+    );
+    arrow.line.material.color.convertSRGBToLinear();
+    arrow.cone.material.color.convertSRGBToLinear();
+    arrow.line.material.transparent = true;
+    arrow.cone.material.transparent = true;
+    arrow.visible = false;
+    parent.add(arrow);
+    arrows.push({ arrow, t });
+  }
+  return (signedStrength) => {
+    const strength = Math.abs(signedStrength),
+      sign = Math.sign(signedStrength);
+    arrows.forEach(({ arrow, t }) => {
+      arrow.visible = strength > 1e-7;
+      if (!arrow.visible) return;
+      arrow.setDirection(curve.getTangentAt(t).multiplyScalar(sign));
+      arrow.line.material.opacity = arrow.cone.material.opacity =
+        0.3 + 0.7 * Math.min(1, strength);
+    });
+  };
 }
 function textSprite(parent, text, pos, textColor = "#fff", scale = 0.5) {
   const canvas = document.createElement("canvas");
@@ -76,25 +129,17 @@ function createMotor() {
   const iron = material(color.iron, { metalness: 0.5 });
   // The coil lies in the YZ plane at theta=0. Its normal then points along the +X magnetic field.
   box(rotor, [0.26, 1.12, 1.43], [0, 0, 0], iron);
-  for (let i = 0; i < 13; i++) {
-    const x = -0.27 + i * 0.045;
-    tube(
-      rotor,
-      [
-        [x, -0.58, -0.83],
-        [x, 0.58, -0.83],
-        [x, 0.7, -0.66],
-        [x, 0.7, 0.66],
-        [x, 0.58, 0.83],
-        [x, -0.58, 0.83],
-        [x, -0.7, 0.66],
-        [x, -0.7, -0.66],
-      ],
-      0.028,
-      copper,
-      true,
-    );
-  }
+  // One continuous winding A→B, oriented with +X normal, rather than isolated shorted rings.
+  const windingCurve = tube(
+    rotor,
+    createWindingPoints(),
+    0.016,
+    copper,
+    false,
+    13 * 64,
+    true,
+  );
+  const windingFlow = currentMarkers(rotor, windingCurve, 4, 0.23);
   cylinder(rotor, 0.075, 4.5, [0, 0, 0.22], steel);
   // Two insulated semicircular commutator segments rotate with the coil.
   const commutator = new T.Group();
@@ -110,34 +155,19 @@ function createMotor() {
         24,
         1,
         false,
-        i * Math.PI + 0.06,
-        Math.PI - 0.12,
+        i * Math.PI + GENERATOR_PARAMETERS.commutatorHalfGap,
+        Math.PI - 2 * GENERATOR_PARAMETERS.commutatorHalfGap,
       ),
       copper,
       commutator,
     );
     segment.rotation.x = Math.PI / 2;
   }
-  tube(
-    rotor,
-    [
-      [-0.27, 0.58, 0.83],
-      [-0.18, 0.4, 1],
-      [-0.14, 0, 1.08],
-    ],
-    0.022,
-    copper,
-  );
-  tube(
-    rotor,
-    [
-      [0.27, -0.58, 0.83],
-      [0.18, -0.4, 1],
-      [0.14, 0, 1.08],
-    ],
-    0.022,
-    copper,
-  );
+  // A attaches to the +Y segment; B to -Y. For +Z rotation the +X brush is positive.
+  const leadA = tube(rotor, WINDING_LEAD_A, 0.018, copper);
+  const leadB = tube(rotor, WINDING_LEAD_B, 0.018, copper);
+  const leadAFlow = currentMarkers(rotor, leadA, 1, 0.14);
+  const leadBFlow = currentMarkers(rotor, leadB, 1, 0.14);
   const magnets = [];
   for (const [x, c, label] of [
     [-1.13, color.red, "N"],
@@ -151,11 +181,13 @@ function createMotor() {
     magnets.push(magnet);
   }
   const brushMat = material(0x3c4944),
-    holderMat = material(0x96a399);
+    holderMat = material(0x96a399),
+    terminalFlows = [];
   for (const side of [-1, 1]) {
-    box(inside, [0.3, 0.18, 0.28], [side * 0.34, 0, 1.24], brushMat);
-    box(inside, [0.2, 0.29, 0.42], [side * 0.58, 0, 1.24], holderMat);
-    tube(
+    // Narrow tangential point-contact brushes do not bridge the two copper sectors.
+    box(inside, [0.28, 0.018, 0.24], [side * 0.355, 0, 1.24], brushMat);
+    box(inside, [0.24, 0.23, 0.38], [side * 0.615, 0, 1.24], holderMat);
+    const terminalCurve = tube(
       inside,
       [
         [side * 0.64, 0, 1.24],
@@ -163,7 +195,18 @@ function createMotor() {
         [side * 0.8, -1.03, 1.1],
       ],
       0.035,
-      material(side === 1 ? 0xd0745d : 0x44574e),
+      material(side === 1 ? 0xb65f4e : 0x44574e),
+    );
+    terminalFlows.push({
+      side,
+      flow: currentMarkers(inside, terminalCurve, 1, 0.18),
+    });
+    textSprite(
+      inside,
+      side === 1 ? "+" : "−",
+      [side * 1.02, -1.03, 1.14],
+      side === 1 ? "#ac5442" : "#3c5148",
+      0.22,
     );
   }
   const shellMat = material(0x16191a, {
@@ -215,8 +258,14 @@ function createMotor() {
   return {
     root,
     rotor,
-    update(angle, mode, showField) {
+    update(angle, mode, showField, sample) {
       rotor.rotation.z = angle;
+      const strength = sample?.normalizedCurrent || 0;
+      const coilStrength = Math.sign(sample?.coilCurrent || 0) * strength;
+      windingFlow(coilStrength);
+      leadAFlow(-coilStrength);
+      leadBFlow(coilStrength);
+      terminalFlows.forEach(({ side, flow }) => flow(side * strength));
       inside.visible = mode !== "closed";
       shellMat.opacity = mode === "closed" ? 1 : 0.09;
       shellMat.depthWrite = mode === "closed";
@@ -329,6 +378,40 @@ function createKit(scene) {
     cylinder(led, 0.023, 0.31, [x, 0, 0.19], material(0xa4aca4));
   cylinder(led, 0.16, 0.35, [0, 0, 0.48], ledMat);
   mesh(new T.SphereGeometry(0.16, 20, 16), ledMat, led, [0, 0, 0.655]);
+  const bondMaterial = material(0x9fa99c, { metalness: 0.7, roughness: 0.3 });
+  const bondA = tube(
+    led,
+    [
+      [0.115, 0, 0.21],
+      [0.115, 0, 0.4],
+      [0.06, 0, 0.53],
+    ],
+    0.009,
+    bondMaterial,
+  );
+  const bondK = tube(
+    led,
+    [
+      [-0.06, 0, 0.53],
+      [-0.115, 0, 0.4],
+      [-0.115, 0, 0.21],
+    ],
+    0.012,
+    bondMaterial,
+  );
+  const die = box(
+    led,
+    [0.12, 0.065, 0.055],
+    [0, 0, 0.53],
+    material(0x625e48, { emissive: 0xdaf267, emissiveIntensity: 0 }),
+  );
+  const ledPath = new T.CurvePath();
+  ledPath.add(bondA);
+  ledPath.add(new T.LineCurve3(v(0.06, 0, 0.53), v(-0.06, 0, 0.53)));
+  ledPath.add(bondK);
+  const ledFlow = currentMarkers(led, ledPath, 1, 0.11);
+  textSprite(led, "A", [0.3, 0.06, 0.33], "#ac5442", 0.14);
+  textSprite(led, "K", [-0.3, 0.06, 0.33], "#3c5148", 0.14);
   const ledLight = new T.PointLight(0xf4ff94, 0, 2);
   ledLight.position.set(0, 0, 0.8);
   led.add(ledLight);
@@ -377,15 +460,8 @@ function createKit(scene) {
     0.035,
     material(0x394b43),
   );
-  const particles = [];
-  const particleGeo = new T.SphereGeometry(0.065, 8, 6);
-  const particleMat = new T.MeshBasicMaterial({ color: 0xd0ab39 });
-  for (const curve of [redCurve, blackCurve])
-    for (let i = 0; i < 8; i++) {
-      const p = mesh(particleGeo, particleMat, kit);
-      p.visible = false;
-      particles.push({ p, curve, offset: i / 8 });
-    }
+  const redFlow = currentMarkers(kit, redCurve, 4, 0.25),
+    blackFlow = currentMarkers(kit, blackCurve, 4, 0.25);
   // Subtle floor shadow, with transparent scene background so the UI remains light.
   const floor = mesh(
     new T.PlaneGeometry(200, 200),
@@ -396,16 +472,17 @@ function createKit(scene) {
   floor.rotation.x = -Math.PI / 2;
   return {
     motor,
-    update(angle, mode, field, ledIntensity, current, progress) {
+    update(angle, mode, field, sample) {
       propeller.rotation.z = angle;
-      motor.update(angle, mode, field);
-      ledMat.emissiveIntensity = ledIntensity * 2.4;
-      ledLight.intensity = ledIntensity * 0.7;
-      glow.material.opacity = ledIntensity * 0.85;
-      particles.forEach(({ p, curve, offset }) => {
-        p.visible = current > 0.015;
-        p.position.copy(curve.getPointAt((progress + offset) % 1));
-      });
+      motor.update(angle, mode, field, sample);
+      const strength = sample.normalizedCurrent;
+      ledMat.emissiveIntensity = strength * 2.4;
+      ledLight.intensity = strength * 0.7;
+      glow.material.opacity = strength * 0.85;
+      die.material.emissiveIntensity = strength * 2;
+      redFlow(strength);
+      blackFlow(strength);
+      ledFlow(strength);
     },
   };
 }
@@ -649,16 +726,14 @@ export function createExperiment({ onMotorSelect = () => {} } = {}) {
       overview.reset();
       detail.reset();
     },
-    update(state, sample, progress) {
+    update(state, sample) {
       kit.update(
         state.angle,
         state.inside ? "cutaway" : "closed",
         state.field,
-        sample.led,
-        sample.output,
-        progress,
+        sample,
       );
-      motor.update(state.angle, state.mode, state.field);
+      motor.update(state.angle, state.mode, state.field, sample);
       // Keep exploded parts in frame without changing the user's chosen viewing direction.
       motor.root.scale.setScalar(state.mode === "exploded" ? 0.78 : 1);
       overview.render();
